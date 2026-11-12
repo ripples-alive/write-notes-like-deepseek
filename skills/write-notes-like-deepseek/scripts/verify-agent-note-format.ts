@@ -40,6 +40,8 @@ const BANNED_IMPLEMENTED = new Set([
 ]);
 
 const ALTERNATIVES_RE = /^## (?:Alternatives considered|.{0,8}?(?:替代方案|备选(?:方案)?|其他做法))$/;
+const FORMAT_ADOPTED = "2026-07-05";
+const GRANDFATHER = "<!-- agent-note-format: alternatives-not-recorded (pre-format Agent Note) -->";
 
 /** Strip trailing parenthetical: `## Decision（说明）` → `## Decision`. */
 function headingBase(h: string): string {
@@ -101,7 +103,7 @@ function isProseLine(src: MaskedSource, i: number): boolean {
 }
 
 /** Used by both the verifier and archive preflight so invalid notes cannot be frozen. */
-export function validateNoteFormat(raw: string, lifecycle: string): string[] {
+export function validateNoteFormat(raw: string, lifecycle: string, date: string): string[] {
   const errors: string[] = [];
   const fail = (msg: string) => { errors.push(msg); };
   const src = maskSource(raw);
@@ -145,11 +147,14 @@ export function validateNoteFormat(raw: string, lifecycle: string): string[] {
   }
 
   const hasSection = bases.some((h: string) => ALTERNATIVES_RE.test(h));
-  // The section is required at every date; it may honestly state that no
-  // alternatives were considered instead of inventing rejected options.
-  if (!hasSection) {
+  // Preserve the original, date-bounded exemption for existing pre-format
+  // notes. New notes still need a section, which may honestly state "none".
+  const hasGrandfather = raw.includes(GRANDFATHER);
+  if (hasSection && hasGrandfather) fail("carries both ## Alternatives considered and grandfather comment — drop the comment");
+  if (!hasSection && !hasGrandfather) {
     fail("missing ## Alternatives considered / ## 备选方案");
   }
+  if (hasGrandfather && date >= FORMAT_ADOPTED) fail(`grandfather comment only valid before ${FORMAT_ADOPTED}`);
   return errors;
 }
 
@@ -157,7 +162,7 @@ function main(): void {
   const { notes, errors } = walkAgentNoteTree();
   for (const note of notes) {
     const raw = readFileSync(resolve(agentNoteRoot, note.rel), "utf8");
-    errors.push(...validateNoteFormat(raw, note.lifecycle).map((error) => `format: ${note.rel} — ${error}`));
+    errors.push(...validateNoteFormat(raw, note.lifecycle, note.date).map((error) => `format: ${note.rel} — ${error}`));
   }
   if (errors.length) {
     for (const error of errors) console.error(error);

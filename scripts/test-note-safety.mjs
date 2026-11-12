@@ -2,7 +2,7 @@
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
 import { execFileSync, spawnSync } from 'node:child_process';
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, readlinkSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join, relative, resolve } from 'node:path';
 import { test } from 'node:test';
@@ -54,7 +54,7 @@ function snapshot(root) {
       const path = join(dir, entry.name);
       const key = relative(root, path);
       if (entry.isDirectory()) { files[`${key}/`] = ''; walk(path); }
-      else if (entry.isSymbolicLink()) files[key] = '<symlink>';
+      else if (entry.isSymbolicLink()) files[key] = `<symlink>${readlinkSync(path)}`;
       else files[key] = readFileSync(path).toString('base64');
     }
   }
@@ -194,6 +194,28 @@ test('existing seal mismatches and archive destination collisions block archivin
   failsUnchanged(f, archiveScript, [colliding], /already exists/);
 });
 
+test('archive and manifest symlinks fail without changing links or their targets', async (t) => {
+  for (const kind of ['note', 'class directory', 'manifest']) await t.test(kind, (t) => {
+    const f = fixture(t);
+    seedArchive(f);
+    const source = f.write(sourceRel);
+    const link = join(f.root, kind === 'manifest' ? 'archived/manifest.json' : kind === 'note' ? archiveKey : 'archived/process');
+    const target = join(f.cwd, 'link-target');
+    if (kind === 'class directory') {
+      put(join(target, '2000-01-01-history.md'), readFileSync(join(f.root, archiveKey)));
+      rmSync(link, { recursive: true });
+      symlinkSync(target, link, 'dir');
+    } else {
+      put(target, readFileSync(link));
+      rmSync(link);
+      symlinkSync(target, link);
+    }
+    failsUnchanged(f, verifyScript, [], /symbolic links/);
+    failsUnchanged(f, verifyScript, ['--write'], /symbolic links/);
+    failsUnchanged(f, archiveScript, [source], /symbolic links/);
+  });
+});
+
 test('source, successor and CLI argument errors leave the tree untouched', (t) => {
   const f = fixture(t, { git: false });
   const source = f.write(sourceRel);
@@ -261,11 +283,51 @@ test('--write cannot seal malformed archived headers', (t) => {
   failsUnchanged(f, verifyScript, ['--write'], /Archived: YYYY-MM-DD/);
 });
 
-test('alternatives section is required at every date; zero real alternatives is valid', (t) => {
-  const f = fixture(t, { git: false });
-  const note = f.write(sourceRel);
-  succeeds(f.run('verify-agent-note-format.ts'));
+test('legacy alternatives exemption has the same date boundary in validation and archive preflight', async (t) => {
+  const marker = '<!-- agent-note-format: alternatives-not-recorded (pre-format Agent Note) -->';
   const withoutSection = body().replace('## Alternatives considered\nNone were considered for this narrow fixture.\n\n', '');
-  put(note, withoutSection + '\n<!-- agent-note-format: alternatives-not-recorded (pre-format Agent Note) -->\n');
-  fails(f.run('verify-agent-note-format.ts'), /missing ## Alternatives considered/);
+  const cases = [
+    ['legacy exact marker', '2026-07-04', `${withoutSection}\n${marker}\n`],
+    ['legacy missing marker', '2026-07-04', withoutSection, /missing ## Alternatives considered/],
+    ['legacy altered marker', '2026-07-04', `${withoutSection}\n${marker.replace('pre-format', 'legacy')}\n`, /missing ## Alternatives considered/],
+    ['legacy section and marker', '2026-07-04', `${body()}\n${marker}\n`, /carries both/],
+    ['cutoff marker', '2026-07-05', `${withoutSection}\n${marker}\n`, /only valid before 2026-07-05/],
+    ['later marker', '2026-07-06', `${withoutSection}\n${marker}\n`, /only valid before 2026-07-05/],
+    ['later section and marker', '2026-07-06', `${body()}\n${marker}\n`, /only valid before 2026-07-05/],
+    ['new missing section', '2026-07-06', withoutSection, /missing ## Alternatives considered/],
+    ['new section with no alternatives', '2026-07-06', body()],
+  ];
+  for (const [name, date, raw, expectedError] of cases) await t.test(name, (t) => {
+    const f = fixture(t, { git: false });
+    const filename = `${date}-compatibility.md`;
+    const note = f.write(`implemented/process/${filename}`, raw);
+    if (expectedError) {
+      failsUnchanged(f, 'verify-agent-note-format.ts', [], expectedError);
+      failsUnchanged(f, archiveScript, [note], expectedError);
+    } else {
+      succeeds(f.run('verify-agent-note-format.ts'));
+      succeeds(f.run(archiveScript, [note]));
+      const archived = readFileSync(join(f.root, 'archived/process', filename), 'utf8');
+      assert.equal(archived.replace(/^Archived: \d{4}-\d{2}-\d{2}\n/m, ''), raw);
+      succeeds(f.run(verifyScript));
+    }
+  });
+});
+
+test('archive preflight applies the legacy alternatives cutoff to the successor date', async (t) => {
+  const raw = body('proposed').replace('## Alternatives considered\nNone were considered for this narrow fixture.\n\n', '')
+    + '\n<!-- agent-note-format: alternatives-not-recorded (pre-format Agent Note) -->\n';
+  for (const date of ['2026-07-04', '2026-07-05']) await t.test(date, (t) => {
+    const f = fixture(t, { git: false });
+    const source = f.write(sourceRel);
+    const successor = f.write(`proposed/process/${date}-successor.md`, raw);
+    if (date === '2026-07-04') {
+      succeeds(f.run(archiveScript, [source, '--superseded-by', successor]));
+      assert.ok(readFileSync(successor, 'utf8').startsWith(raw.trimEnd()));
+      succeeds(f.run('verify-agent-note-format.ts'));
+      succeeds(f.run(verifyScript));
+    } else {
+      failsUnchanged(f, archiveScript, [source, '--superseded-by', successor], /only valid before 2026-07-05/);
+    }
+  });
 });

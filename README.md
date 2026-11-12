@@ -4,6 +4,20 @@
 
 本仓库独立维护通用 skill、模板和校验工具。名称保留用于安装兼容；不代表任何组织的官方流程，也不把其他仓库的规则作为运行依赖。
 
+![项目笔记保留代码中不易看出的理由，供后续维护者查阅](assets/hero.png)
+
+## 采用目标与兼容原则
+
+这个版本用以下结果判断改进是否值得保留：
+
+- 后续维护者能找到仍有效的理由，避免重复已有记录或重走已否决的方案。
+- 常规改动不额外产文；已授权任务不因笔记流程重复等待确认。
+- 归档不会因无效历史基线、损坏清单或普通写入错误而静默丢失历史。
+- 公共包、宿主项目记录和外部全局规则各自有明确边界。
+- 沿用已有目录、状态、分类和命令入口；已符合原格式的历史记录无需为升级补写不存在的理由。
+
+维护时依据实际使用场景、已复现的问题和兼容代价取舍。共用校验和回归测试用于保障上述结果；不以改动行数、统一风格或工具更新本身作为改进目标。
+
 ## 内容边界
 
 | 位置 | 负责什么 | 不放什么 |
@@ -18,7 +32,7 @@ Agent 仍须遵守当前任务及其适用的外部规则。本 skill 只负责�
 
 ## 什么时候值得写
 
-先问两个问题：**代码、测试或已有文档是否已经能解释？如果不补这条记录，后来维护者容易重复什么具体错误？** 两个问题都答不清时，通常不必新增 Note。
+先问两个问题：**代码、测试或已有文档是否已经能解释？如果不补这条记录，后来维护者容易重复什么具体错误？** 现有材料已足以解释，或说不出独立的长期价值时，就不新增 Note。
 
 适合记录的内容包括：难以从实现看出的取舍、反直觉的兼容限制、被实验否定且容易再次提出的方案、需要保留理由的项目级约束。小修复、机械重构、提交摘要和能从测试直接看出的行为通常不需要单独记录。
 
@@ -46,7 +60,7 @@ Agent 仍须遵守当前任务及其适用的外部规则。本 skill 只负责�
 
 ## 安装当前分支
 
-运行工具需要 **Node.js 24 或更新版本**。脚本使用 Node 内置模块与原生 TypeScript 支持，无需安装 `tsx`。
+宿主工具沿用原有的 **`npx tsx`** 调用方式，无需为了这个版本统一迁移 Node。首次调用可能需要获取 `tsx`；已有 Node.js 24 或更新版本的环境，也可以把下文的 `npx tsx` 换成 `node`，直接执行脚本。
 
 当前改动位于 `chore/generic-rules-and-archive-validation` 分支。为明确安装来源，先把这个分支检出到一个独立目录；替换下面的示例绝对路径：
 
@@ -73,15 +87,15 @@ npx --yes skills@1.7.1 add /absolute/path/to/agent-notes-skill-source \
 以下使用项目级安装的默认路径；如果安装到了其他位置，将命令中的 skill 路径替换为实际位置。**工作目录始终是宿主项目根目录**：
 
 ```bash
-node .agents/skills/write-notes-like-deepseek/scripts/verify-agent-note-tree.ts
-node .agents/skills/write-notes-like-deepseek/scripts/verify-agent-note-format.ts
-node .agents/skills/write-notes-like-deepseek/scripts/verify-archived-agent-notes.ts
+npx tsx .agents/skills/write-notes-like-deepseek/scripts/verify-agent-note-tree.ts
+npx tsx .agents/skills/write-notes-like-deepseek/scripts/verify-agent-note-format.ts
+npx tsx .agents/skills/write-notes-like-deepseek/scripts/verify-archived-agent-notes.ts
 ```
 
 默认检查当前工作目录下的 `.agents/notes/`。`AGENT_NOTE_ROOT` 可以指定其他笔记根目录；相对路径仍以当前工作目录为准。
 
 ```bash
-node .agents/skills/write-notes-like-deepseek/scripts/archive-agent-note.ts \
+npx tsx .agents/skills/write-notes-like-deepseek/scripts/archive-agent-note.ts \
   .agents/notes/implemented/architecture/2026-01-01-example-decision.md
 ```
 
@@ -103,9 +117,9 @@ node .agents/skills/write-notes-like-deepseek/scripts/archive-agent-note.ts \
 ### 可选看板
 
 ```bash
-node .agents/skills/write-notes-like-deepseek/scripts/build-board.ts \
+npx tsx .agents/skills/write-notes-like-deepseek/scripts/build-board.ts \
   --init board.html '工程决策看板'
-node .agents/skills/write-notes-like-deepseek/scripts/build-board.ts \
+npx tsx .agents/skills/write-notes-like-deepseek/scripts/build-board.ts \
   --bundle .agents/notes demo.html '工程决策看板'
 ```
 
@@ -115,12 +129,16 @@ node .agents/skills/write-notes-like-deepseek/scripts/build-board.ts \
 
 通用维护约定见 [AGENTS.md](AGENTS.md)。本仓库只向自己的分支提交和发布；没有向其他仓库自动同步、导入示例或创建 PR 的流程。
 
+仓库开发和回归测试使用 Node.js 24，与既有 CI 环境一致。这个测试环境要求与宿主使用入口分开维护。
+
 ```bash
 npm test
 npm run verify-notes
 ```
 
 `npm test` 离线运行归档安全回归测试和复制/链接布局的宿主项目测试，覆盖安装内容边界、从宿主目录调用工具、错误格式拒绝、归档与看板生成。它不把模拟布局检查称为真实安装器验证。
+
+新记录使用当前模板。对已经采用旧格式标记的历史记录，保留原来的窄兼容规则，详见 [格式说明](skills/write-notes-like-deepseek/references/note-format.md)；不要为了升级补造备选方案或改写已封印历史。
 
 如需验证固定版本安装器的实际行为，另外运行：
 

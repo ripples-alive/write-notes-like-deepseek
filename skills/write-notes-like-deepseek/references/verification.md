@@ -1,6 +1,6 @@
 # 校验工具与运行方式
 
-所有脚本随 Skill 分发，使用 Node.js 24 或更新版本原生执行 TypeScript，无需 `tsx`。从宿主工程根目录运行，并使用实际安装路径；安装不会自动配置 npm scripts 或启用 CI。
+所有脚本随 Skill 分发，宿主沿用 `npx tsx` 入口；已有 Node.js 24 或更新版本时也可直接用 `node`。首次调用可能需要获取 `tsx`。从宿主工程根目录运行，并使用实际安装路径；安装不会自动配置 npm scripts 或启用 CI。
 
 ## 三个校验器
 
@@ -11,9 +11,9 @@
 | `verify-archived-agent-notes.ts` | 归档头块、文件与 manifest 的对应关系、SHA-256，以及相对可用 Git 基线的只增不改 |
 
 ```sh
-node .agents/skills/write-notes-like-deepseek/scripts/verify-agent-note-tree.ts
-node .agents/skills/write-notes-like-deepseek/scripts/verify-agent-note-format.ts
-node .agents/skills/write-notes-like-deepseek/scripts/verify-archived-agent-notes.ts
+npx tsx .agents/skills/write-notes-like-deepseek/scripts/verify-agent-note-tree.ts
+npx tsx .agents/skills/write-notes-like-deepseek/scripts/verify-agent-note-format.ts
+npx tsx .agents/skills/write-notes-like-deepseek/scripts/verify-archived-agent-notes.ts
 ```
 
 项目级、全局或其他目录安装时，替换命令前缀。默认 Notes 根为当前目录下 `.agents/notes/`；可用 `AGENT_NOTE_ROOT` 指定其他符合布局的根目录。
@@ -24,7 +24,7 @@ node .agents/skills/write-notes-like-deepseek/scripts/verify-archived-agent-note
 
 - 模板固定英文头块与节名；脚本也识别部分中文别名、标题全角冒号及章节括号后缀。
 - 代码块、引用和 HTML 注释中的示例不充当正文结构；CRLF 和 BOM 在格式解析时归一。
-- 所有活跃 Note 都需要备选章节，不按创建日期豁免。章节可以诚实写“无”或“未记录”，脚本不检查数量和真实性。
+- 新记录需要备选章节，可以诚实写“无”或“未记录”，脚本不检查数量和真实性。已有记录保留 [note-format.md](note-format.md) 中的旧日期与精确标记兼容规则；独立校验和归档预检使用同一规则，不要求补写历史。
 - `implemented` 的当前状态描述由作者负责；检查器仅拒绝提案类标题，不扫描正文时态。
 - 结构通过不能证明理由正确、内容完整、工程测试已执行，也不能发现应该创建却没有创建的 Note。真实工程验证仍按宿主要求完成。
 
@@ -50,9 +50,9 @@ node .agents/skills/write-notes-like-deepseek/scripts/verify-archived-agent-note
 `check-note-anchors.ts` 是可选软报告，扫描代码中的 `// Note:` 或 `# Note:` 路径锚点，报告缺路径、无效锚点和未被锚点引用的 implemented 记录。默认代码根为当前目录，可通过 `AGENT_NOTE_CODE_ROOT` 指定。退出码不表示这些报告已解决，不作为 CI 必需项。
 
 ```sh
-node .agents/skills/write-notes-like-deepseek/scripts/check-note-anchors.ts
-node .agents/skills/write-notes-like-deepseek/scripts/build-board.ts --init board.html '工程决定'
-node .agents/skills/write-notes-like-deepseek/scripts/build-board.ts --bundle .agents/notes demo.html '工程决定'
+npx tsx .agents/skills/write-notes-like-deepseek/scripts/check-note-anchors.ts
+npx tsx .agents/skills/write-notes-like-deepseek/scripts/build-board.ts --init board.html '工程决定'
+npx tsx .agents/skills/write-notes-like-deepseek/scripts/build-board.ts --bundle .agents/notes demo.html '工程决定'
 ```
 
 看板为可选查看方式；打包文件包含所选笔记正文。只按当前任务授权保存或发布，不自动对外上传，也不把宿主记录打包进公共 Skill 仓库。

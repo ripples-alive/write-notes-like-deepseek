@@ -11,6 +11,9 @@ This repository publishes a reusable Agent Notes skill. Keep changes useful to a
 
 ## Maintenance
 
+- Judge changes against the product goal: preserve useful project rationale with little recording overhead and reliable history. A change needs a concrete use case or demonstrated failure, a stated compatibility cost, and proportionate verification.
+- Preserve existing note paths, lifecycle names, classes, manifest format, CLI entry points, and valid historical records unless a demonstrated correctness problem requires a change. Do not treat a silent integrity failure as compatibility to preserve.
+- Keep documentation and examples consistent with the executable behavior. Retain useful, accurate materials; do not replace working code or remove useful assets solely for stylistic uniformity.
 - Work with this repository's own branches and configured origin. Do not add, contact, synchronize with, or send changes to a historical source repository as part of this workflow.
 - Preserve factual provenance without presenting external practices as current requirements or official endorsement.
 - Keep the skill independently usable. Do not introduce live rule imports, external example importers, or dependencies on another project's private configuration.
@@ -19,7 +22,7 @@ This repository publishes a reusable Agent Notes skill. Keep changes useful to a
 
 ## Verification
 
-- Use Node.js 24 or newer. Runtime scripts use built-in modules and native TypeScript support.
+- Run repository maintenance tests with Node.js 24, matching CI. Host commands retain the existing `npx tsx` entry point; direct `node` execution is an optional path on Node.js 24 or newer, not a host upgrade requirement.
 - Run `npm test`, `npm run verify-notes`, and `git diff --check` for changes to rules or tooling. Use focused checks when a change cannot affect the other areas.
 - Run `npm run test-skill-install` when changing package discovery or installer-facing layout; this additionally exercises the pinned external installer.
 - Historical manifest checks must fail for invalid baselines, deleted records, modified seals, and malformed manifests. Do not turn a validation failure into a fresh history.

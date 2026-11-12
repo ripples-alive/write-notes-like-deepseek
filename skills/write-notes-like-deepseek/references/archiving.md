@@ -18,17 +18,17 @@
 
 ## 2. 归档操作
 
-先确认仍有用的理由已经保存在活跃位置，修正与本次决定相关的事实，并运行三个 Note 校验器。使用 Node.js 24 或更新版本，从宿主根目录执行；Skill 安装在其他位置时替换前缀。
+先确认仍有用的理由已经保存在活跃位置，修正与本次决定相关的事实，并运行三个 Note 校验器。从宿主根目录使用原有 `npx tsx` 入口执行；已有 Node.js 24 或更新版本时也可直接使用 `node`。Skill 安装在其他位置时替换前缀。
 
 ```sh
-node .agents/skills/write-notes-like-deepseek/scripts/archive-agent-note.ts \
+npx tsx .agents/skills/write-notes-like-deepseek/scripts/archive-agent-note.ts \
   .agents/notes/implemented/<class>/<filename>.md
 ```
 
 需要在接管决定的新记录中留下历史链接时，可添加：
 
 ```sh
-node .agents/skills/write-notes-like-deepseek/scripts/archive-agent-note.ts \
+npx tsx .agents/skills/write-notes-like-deepseek/scripts/archive-agent-note.ts \
   .agents/notes/implemented/<class>/<filename>.md \
   --superseded-by .agents/notes/implemented/<class>/<successor>.md
 ```
@@ -68,7 +68,7 @@ Archived: YYYY-MM-DD
 对于已有、尚未封印的有效归档，可显式补录：
 
 ```sh
-node .agents/skills/write-notes-like-deepseek/scripts/verify-archived-agent-notes.ts --write
+npx tsx .agents/skills/write-notes-like-deepseek/scripts/verify-archived-agent-notes.ts --write
 ```
 
 `--write` 先校验已有条目和可用基线，再添加缺失封印；不修复损坏 manifest，不重写旧封印。补录前须确认这些文件确实应当成为历史快照。

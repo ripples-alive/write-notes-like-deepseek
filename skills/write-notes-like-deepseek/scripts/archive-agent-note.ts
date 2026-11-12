@@ -20,7 +20,7 @@ function readActiveNote(path: string, mustBeImplemented = false) {
   const original = readFileSync(path);
   const raw = original.toString("utf8");
   const lines = raw.replace(/^\uFEFF/, "").replace(/\r\n?/g, "\n").split("\n");
-  const formatErrors = validateNoteFormat(raw, parts[0]);
+  const formatErrors = validateNoteFormat(raw, parts[0], parts[2].slice(0, 10));
   if (formatErrors.length) throw new Error(`${rel} — ${formatErrors.join("; ")}`);
   return { rel, parts, original, raw, lines, mode: lstatSync(path).mode };
 }

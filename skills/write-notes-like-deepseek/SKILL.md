@@ -91,6 +91,7 @@ Status: <状态>
 
 - 动机应能脱离方案独立成立；决定说明关键约束、理由及适用范围，不复述实现步骤。
 - `Alternatives considered` 保留标题，只写真实考虑过的方案，没有数量要求。没有真实备选就写“无”；资料未记录则如实写“未记录”，不要补造评审历史。
+- 已采用旧格式标记的历史记录按 [note-format.md](references/note-format.md) 兼容；不为统一新模板而补写历史理由或改动封存正文。
 - `Consequences` 写已知收益、代价、限制和有意义的重访条件。没有实测基线，不声称性能或成本有所提升。
 - `Verification` 可按需增加，区分实际执行的检查、结果与未验证部分。格式检查通过不能替代工程验证。
 - 跨 Note 使用相对 Markdown 链接。源码入口锚点只在宿主已有惯例或确有帮助时添加，不要求遍布代码。
@@ -102,12 +103,12 @@ Status: <状态>
 
 写改 Note 后，检查理由是否完整、状态是否真实、是否有重复归属，使用 [quality-gate.md](references/quality-gate.md) 自检。能直接修正的缺口自行修正；重要未决取舍按当前授权处理。
 
-工具要求 Node.js 24 或更新版本。保持当前目录为宿主项目根目录，按实际安装位置调用三个校验脚本：
+保持当前目录为宿主项目根目录，沿用 `npx tsx` 入口并按实际安装位置调用三个校验脚本。已有 Node.js 24 或更新版本时，也可用 `node` 直接执行：
 
 ```sh
-node .agents/skills/write-notes-like-deepseek/scripts/verify-agent-note-tree.ts
-node .agents/skills/write-notes-like-deepseek/scripts/verify-agent-note-format.ts
-node .agents/skills/write-notes-like-deepseek/scripts/verify-archived-agent-notes.ts
+npx tsx .agents/skills/write-notes-like-deepseek/scripts/verify-agent-note-tree.ts
+npx tsx .agents/skills/write-notes-like-deepseek/scripts/verify-agent-note-format.ts
+npx tsx .agents/skills/write-notes-like-deepseek/scripts/verify-archived-agent-notes.ts
 ```
 
 安装在其他位置时替换路径；不要切换到 Skill 目录后误检 Skill 自身。默认 Notes 根为宿主的 `.agents/notes/`，兼容布局可通过 `AGENT_NOTE_ROOT` 指定。安装不会自动创建宿主 npm scripts 或启用 CI。

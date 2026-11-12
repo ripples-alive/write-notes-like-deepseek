@@ -68,10 +68,7 @@ jobs:
           echo "Archive baseline: $base"
 
       - name: Verify note tree, format, and archive history
-        run: |
-          node skills/write-notes-like-deepseek/scripts/verify-agent-note-tree.ts
-          node skills/write-notes-like-deepseek/scripts/verify-agent-note-format.ts
-          node skills/write-notes-like-deepseek/scripts/verify-archived-agent-notes.ts
+        run: npm run verify-notes
 
       - name: Run offline archive and package regressions
         run: npm test
