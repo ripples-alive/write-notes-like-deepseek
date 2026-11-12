@@ -15,6 +15,7 @@ This repository publishes a reusable Agent Notes skill. Keep changes useful to a
 - Preserve existing note paths, lifecycle names, classes, manifest format, CLI entry points, and valid historical records unless a demonstrated correctness problem requires a change. Do not treat a silent integrity failure as compatibility to preserve.
 - Keep documentation and examples consistent with the executable behavior. Retain useful, accurate materials; do not replace working code or remove useful assets solely for stylistic uniformity.
 - Work with this repository's own branches and configured origin. Do not add, contact, synchronize with, or send changes to a historical source repository as part of this workflow.
+- Keep `main` as the normal installation source. Validate changes on a development branch, integrate completed work into `main`, and verify the main-branch CI. Installation instructions must not require ordinary users to track a development branch.
 - Preserve factual provenance without presenting external practices as current requirements or official endorsement.
 - Keep the skill independently usable. Do not introduce live rule imports, external example importers, or dependencies on another project's private configuration.
 - Keep `SKILL.md` concise, put details in references, and keep templates consistent with validators.

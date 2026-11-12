@@ -58,27 +58,20 @@ Agent 仍须遵守当前任务及其适用的外部规则。本 skill 只负责�
 
 `archived` 用于保存已实施决策的历史快照。正文仍保留 `Status: implemented`，由归档脚本增加 `Archived: YYYY-MM-DD`，并在 `archived/manifest.json` 中记录 SHA-256。归档后的正文和已有 manifest 条目不可重写；后续纠正用新记录说明。
 
-## 安装当前分支
+## 安装
 
 宿主工具沿用原有的 **`npx tsx`** 调用方式，无需为了这个版本统一迁移 Node。首次调用可能需要获取 `tsx`；已有 Node.js 24 或更新版本的环境，也可以把下文的 `npx tsx` 换成 `node`，直接执行脚本。
 
-当前改动位于 `chore/generic-rules-and-archive-validation` 分支。为明确安装来源，先把这个分支检出到一个独立目录；替换下面的示例绝对路径：
+`main` 是日常安装入口。在要使用该 skill 的**宿主项目根目录**执行以下命令，直接安装本仓库默认主分支，无需先克隆开发分支：
+
+下面固定版本的安装器 `skills@1.7.1` 需要 Node.js 22.20.0 或更新版本；这是安装器的要求，与安装后校验脚本的运行入口分开。
 
 ```bash
-git clone --single-branch \
-  --branch chore/generic-rules-and-archive-validation \
-  https://github.com/ripples-alive/write-notes-like-deepseek.git \
-  /absolute/path/to/agent-notes-skill-source
+npx --yes skills@1.7.1 add ripples-alive/write-notes-like-deepseek \
+  --skill write-notes-like-deepseek --agent codex -y
 ```
 
-然后进入要使用该 skill 的**宿主项目根目录**执行：
-
-```bash
-npx --yes skills@1.7.1 add /absolute/path/to/agent-notes-skill-source \
-  --skill write-notes-like-deepseek --agent codex
-```
-
-可按所用 Agent 更换 `--agent`，需要复制安装时增加 `--copy`。安装器可能需要联网获取 CLI。安装只包含 `skills/write-notes-like-deepseek/` 下的内容，不包含本仓库的维护规则、测试样例或项目笔记。
+使用 Claude Code 时将 `--agent codex` 改为 `--agent claude-code`；同时使用两者可写 `--agent codex claude-code`。默认仅安装到当前项目，需要个人全局安装时增加 `--global`，需要复制安装时增加 `--copy`。安装器需要联网获取 CLI 和本仓库。安装只包含 `skills/write-notes-like-deepseek/` 下的内容，不包含本仓库的维护规则、测试样例或项目笔记。
 
 安装器不会自动修改宿主项目的 `package.json`、启用 CI、设置分支保护或创建外部存储。确有需要时，在任务授权范围内完成这些接入步骤。
 
@@ -127,7 +120,7 @@ npx tsx .agents/skills/write-notes-like-deepseek/scripts/build-board.ts \
 
 ## 维护这个仓库
 
-通用维护约定见 [AGENTS.md](AGENTS.md)。本仓库只向自己的分支提交和发布；没有向其他仓库自动同步、导入示例或创建 PR 的流程。
+通用维护约定见 [AGENTS.md](AGENTS.md)。改动在自己的开发分支完成并验证后合入 `main`，再确认主分支 CI；日常安装始终使用 `main`。本仓库没有向其他仓库自动同步、导入示例或创建 PR 的流程。
 
 仓库开发和回归测试使用 Node.js 24，与既有 CI 环境一致。这个测试环境要求与宿主使用入口分开维护。
 
