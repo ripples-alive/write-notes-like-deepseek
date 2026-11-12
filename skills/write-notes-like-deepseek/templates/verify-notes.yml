@@ -1,12 +1,12 @@
-# 复制到宿主仓库 .github/workflows/verify-notes.yml 后启用。
-# 默认项目级安装路径；使用其他路径时请同步修改下方命令。
+# Copy into the host project and ensure its installed skill files are available in CI.
+# Commands run from the host root; adjust skill paths for another installation layout.
 name: Verify Agent Notes
 
 on:
   push:
-    branches:
-      - main
+    branches: ['**']
   pull_request:
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -15,24 +15,62 @@ jobs:
   verify:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout
+      - name: Checkout this repository
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
+          persist-credentials: false
 
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
           node-version: 24
 
-      - name: Verify note tree, format, and archive seals
+      - name: Select a valid archive baseline
         env:
-          # HEAD is a no-op on a clean checkout. Compare against the pre-change
-          # commit: PR base, or the previous tip of the pushed branch.
-          # A new-branch push sends before=0000…; git show fails and the script
-          # skips append-only (seal-vs-disk still runs).
-          AGENT_NOTE_ARCHIVE_BASE_REF: ${{ github.event.pull_request.base.sha || github.event.before }}
+          EVENT_NAME: ${{ github.event_name }}
+          PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          BEFORE_SHA: ${{ github.event.before }}
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+        shell: bash
         run: |
-          npx tsx .agents/skills/write-notes-like-deepseek/scripts/verify-agent-note-tree.ts
-          npx tsx .agents/skills/write-notes-like-deepseek/scripts/verify-agent-note-format.ts
-          npx tsx .agents/skills/write-notes-like-deepseek/scripts/verify-archived-agent-notes.ts
+          set -euo pipefail
+          case "$EVENT_NAME" in
+            pull_request)
+              base="$PR_BASE_SHA"
+              ;;
+            push)
+              if [[ "$BEFORE_SHA" =~ ^0+$ ]]; then
+                # New branches have no previous tip. Compare with this
+                # repository's default branch, never a historical source repo.
+                default_ref="refs/remotes/origin/$DEFAULT_BRANCH"
+                if [[ "$GITHUB_REF" != "refs/heads/$DEFAULT_BRANCH" ]] && git show-ref --verify --quiet "$default_ref"; then
+                  base="$(git merge-base "$default_ref" HEAD)"
+                elif git rev-parse --verify HEAD^ >/dev/null 2>&1; then
+                  base="$(git rev-parse HEAD^)"
+                else
+                  # A root commit has no prior history to compare.
+                  base=HEAD
+                fi
+              else
+                base="$BEFORE_SHA"
+              fi
+              ;;
+            workflow_dispatch)
+              # Explicit current-state check; not a pre-change comparison.
+              base=HEAD
+              ;;
+            *)
+              echo "Unsupported event: $EVENT_NAME" >&2
+              exit 1
+              ;;
+          esac
+          git rev-parse --verify --end-of-options "${base}^{commit}" >/dev/null
+          echo "AGENT_NOTE_ARCHIVE_BASE_REF=$base" >> "$GITHUB_ENV"
+          echo "Archive baseline: $base"
+
+      - name: Verify note tree, format, and archive history
+        run: |
+          node .agents/skills/write-notes-like-deepseek/scripts/verify-agent-note-tree.ts
+          node .agents/skills/write-notes-like-deepseek/scripts/verify-agent-note-format.ts
+          node .agents/skills/write-notes-like-deepseek/scripts/verify-archived-agent-notes.ts

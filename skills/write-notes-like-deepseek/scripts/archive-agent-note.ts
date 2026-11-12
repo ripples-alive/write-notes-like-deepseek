@@ -1,167 +1,129 @@
-/**
- * CLI tool to archive an implemented Agent Note with frozen manifest sealing.
- * Usage: npx tsx <skill-dir>/scripts/archive-agent-note.ts .agents/notes/implemented/<class>/<filename>.md [--superseded-by <new-note-path>]
- * --superseded-by writes a relative link into the NEW note, never into the archived file.
+/** Archive an implemented Agent Note after validating inputs, existing seals and Git history.
+ * Usage: node <skill-dir>/scripts/archive-agent-note.ts <note> [--superseded-by <active-note>]
+ * The optional successor receives a historical link; the archived body stays frozen.
  */
-import { createHash } from "node:crypto";
-import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
-import { basename, dirname, join, relative, resolve } from "node:path";
-import { agentNoteRoot, AGENT_NOTE_CLASSES, walkAgentNoteTree } from "./agent-note-tree.ts";
+import { closeSync, existsSync, lstatSync, mkdirSync, openSync, readFileSync, rmdirSync, unlinkSync, writeFileSync } from "node:fs";
+import { dirname, join, relative, resolve, sep } from "node:path";
+import { agentNoteRoot, AGENT_NOTE_CLASSES, AGENT_NOTE_LIFECYCLES, walkAgentNoteTree } from "./agent-note-tree.ts";
+import { assertPlainNotePath, inspectArchive, isNoteFilename, manifestText, replaceFileAtomically, sealOf } from "./archive-manifest.ts";
+import { validateNoteFormat } from "./verify-agent-note-format.ts";
 
-const args = process.argv.slice(2);
-const targetArg = args[0];
-const supersededByArgIdx = args.indexOf("--superseded-by");
-const supersededByArg = supersededByArgIdx !== -1 ? args[supersededByArgIdx + 1] : undefined;
-if (supersededByArgIdx !== -1 && !supersededByArg) {
-  console.error("Error: --superseded-by requires a note path");
-  process.exit(1);
-}
-if (!targetArg) {
-  console.error("Usage: npx tsx <skill-dir>/scripts/archive-agent-note.ts <path-to-note> [--superseded-by <new-note-path>]");
-  process.exit(1);
-}
-
-let successorPath: string | undefined;
-let successorRel: string | undefined;
-if (supersededByArg) {
-  successorPath = resolve(process.cwd(), supersededByArg);
-  if (!existsSync(successorPath)) {
-    console.error(`Error: --superseded-by target not found at ${successorPath}`);
-    process.exit(1);
+function readActiveNote(path: string, mustBeImplemented = false) {
+  assertPlainNotePath(agentNoteRoot, path);
+  const rel = relative(agentNoteRoot, path).split(sep).join("/");
+  const parts = rel.split("/");
+  if (parts.length !== 3 || !(AGENT_NOTE_LIFECYCLES as readonly string[]).includes(parts[0]) || (mustBeImplemented && parts[0] !== "implemented")
+    || !(AGENT_NOTE_CLASSES as readonly string[]).includes(parts[1]) || !isNoteFilename(parts[2])) {
+    throw new Error(`${mustBeImplemented ? "archive source must be implemented" : "successor must be active"} at <lifecycle>/<class>/yyyy-mm-dd-topic.md within the selected note root (got ${rel})`);
   }
+  if (!lstatSync(path).isFile()) throw new Error(`note must be a regular file: ${rel}`);
+  const original = readFileSync(path);
+  const raw = original.toString("utf8");
+  const lines = raw.replace(/^\uFEFF/, "").replace(/\r\n?/g, "\n").split("\n");
+  const formatErrors = validateNoteFormat(raw, parts[0]);
+  if (formatErrors.length) throw new Error(`${rel} — ${formatErrors.join("; ")}`);
+  return { rel, parts, original, raw, lines, mode: lstatSync(path).mode };
 }
 
-const targetPath = resolve(process.cwd(), targetArg);
-if (!existsSync(targetPath)) {
-  console.error(`Error: target note not found at ${targetPath}`);
-  process.exit(1);
-}
-
-const relToRoot = relative(agentNoteRoot, targetPath).replace(/\\/g, "/");
-const segs = relToRoot.split("/");
-
-if (segs[0] !== "implemented" || segs.length !== 3) {
-  console.error(`Error: only notes in .agents/notes/implemented/<class>/ can be archived (got: ${relToRoot})`);
-  process.exit(1);
-}
-
-const [, cls, filename] = segs;
-if (!AGENT_NOTE_CLASSES.includes(cls as any)) {
-  console.error(`Error: unknown class "${cls}"`);
-  process.exit(1);
-}
-
-// 1. Read and update content with Archived line
-const raw = readFileSync(targetPath, "utf8");
-const lines = raw.split("\n");
-const statusIdx = lines.findIndex((l) => l === "Status: implemented");
-if (statusIdx === -1) {
-  console.error("Error: note must contain `Status: implemented` to be archived");
-  process.exit(1);
-}
-
-// Local calendar date, not UTC — toISOString() would roll the archived stamp
-// back one day for evening runs east of the prime meridian.
-const nowLocal = new Date();
-const pad2 = (n: number) => String(n).padStart(2, "0");
-const today = `${nowLocal.getFullYear()}-${pad2(nowLocal.getMonth() + 1)}-${pad2(nowLocal.getDate())}`;
-// DSH contract: `Archived:` sits immediately below `Status:` (L3/L4).
-if (!lines.some((l) => l.startsWith("Archived:"))) {
-  lines.splice(statusIdx + 1, 0, `Archived: ${today}`);
-}
-
-if (successorPath) {
-  const rel = relative(agentNoteRoot, successorPath).replace(/\\/g, "/");
-  successorRel = rel;
-  const successorSegs = rel.split("/");
-  if (successorSegs.length !== 3 || !["proposed", "implemented", "rejected"].includes(successorSegs[0] ?? "")) {
-    console.error(`Error: --superseded-by target must be an active note in {lifecycle}/{class}/ (got: ${rel})`);
-    process.exit(1);
+function main(): void {
+  const args = process.argv.slice(2);
+  if (!args[0] || args[0].startsWith("--") || !(args.length === 1 || (args.length === 3 && args[1] === "--superseded-by" && !args[2].startsWith("--")))) {
+    throw new Error("Usage: archive-agent-note.ts <note> [--superseded-by <active-note>]");
   }
-}
+  const targetPath = resolve(process.cwd(), args[0]);
+  const source = readActiveNote(targetPath, true);
+  const successorPath = args[2] ? resolve(process.cwd(), args[2]) : undefined;
+  if (successorPath === targetPath) throw new Error("--superseded-by must name a different active note");
+  const successor = successorPath ? readActiveNote(successorPath) : undefined;
+  const [, cls, filename] = source.parts;
+  const newArchivedRel = `archived/${cls}/${filename}`;
+  const archivedPath = join(agentNoteRoot, newArchivedRel);
+  assertPlainNotePath(agentNoteRoot, archivedPath);
+  if (existsSync(archivedPath)) throw new Error(`archived target already exists: ${newArchivedRel}`);
 
-const oldTitle = (lines[0] ?? "").replace(/^# Agent Note[:：] ?/, "").trim() || basename(filename, ".md");
-const updatedContent = lines.join("\n");
-
-// 2. Determine archived destination
-const archivedDir = join(agentNoteRoot, "archived", cls);
-mkdirSync(archivedDir, { recursive: true });
-const archivedPath = join(archivedDir, filename);
-
-if (existsSync(archivedPath)) {
-  console.error(`Error: target archived note already exists at ${archivedPath}`);
-  console.error("Refusing to overwrite existing archived note. Please inspect and resolve name collision manually.");
-  process.exit(1);
-}
-
-writeFileSync(targetPath, updatedContent, "utf8");
-renameSync(targetPath, archivedPath);
-console.log(`Moved: ${relToRoot} -> archived/${cls}/${filename}`);
-
-// 3. Update archived/manifest.json with SHA-256 seal
-const manifestPath = join(agentNoteRoot, "archived", "manifest.json");
-interface Manifest {
-  version: 1;
-  files: Record<string, string>;
-}
-let manifest: Manifest = { version: 1, files: {} };
-if (existsSync(manifestPath)) {
-  try {
-    manifest = JSON.parse(readFileSync(manifestPath, "utf8"));
-  } catch (e) {
-    console.warn("Warning: existing manifest.json was invalid, creating fresh");
-  }
-}
-
-const newArchivedRel = `archived/${cls}/${filename}`;
-const sha256 = `sha256:${createHash("sha256").update(readFileSync(archivedPath)).digest("hex")}`;
-manifest.files[newArchivedRel] = sha256;
-
-// Deterministic sort keys
-const sortedFiles = Object.fromEntries(
-  Object.entries(manifest.files).sort(([a], [b]) => a.localeCompare(b))
-);
-writeFileSync(manifestPath, JSON.stringify({ version: 1, files: sortedFiles }, null, 2) + "\n", "utf8");
-console.log(`Sealed in archived/manifest.json with hash ${sha256.slice(0, 16)}...`);
-
-// 4. Scan inbound links in active notes (precise markdown-link resolution)
-const { notes } = walkAgentNoteTree();
-const inboundFound: string[] = [];
-const LINK_REGEX = /\[([^\]]+)\]\(([^)]+)\)/g;
-for (const note of notes) {
-  const noteFullPath = resolve(agentNoteRoot, note.rel);
-  const content = readFileSync(noteFullPath, "utf8");
-  let match: RegExpExecArray | null;
-  LINK_REGEX.lastIndex = 0;
-  while ((match = LINK_REGEX.exec(content)) !== null) {
-    const rawTarget = match[2]?.trim();
-    if (!rawTarget || rawTarget.startsWith("http://") || rawTarget.startsWith("https://") || rawTarget.startsWith("#") || rawTarget.startsWith("mailto:")) continue;
-    const fileTarget = rawTarget.split("#")[0];
-    if (!fileTarget) continue;
-    // resolve the link relative to the linking note, then compare with the archived note's original location
-    const resolvedTarget = resolve(dirname(noteFullPath), fileTarget);
-    if (resolvedTarget === targetPath) {
-      inboundFound.push(note.rel);
-      break;
+  // Every semantic check and read happens before any file is changed. Invalid
+  // manifests are errors; the CLI never repairs or replaces existing seals.
+  const { manifest, manifestPath, originalManifest, warnings } = inspectArchive(agentNoteRoot);
+  const manifestMode = originalManifest ? lstatSync(manifestPath).mode : undefined;
+  const { notes, errors } = walkAgentNoteTree();
+  if (errors.length) throw new Error(errors.join("\n"));
+  const inboundFound: string[] = [];
+  for (const note of notes) {
+    const path = resolve(agentNoteRoot, note.rel);
+    if (path === targetPath) continue;
+    assertPlainNotePath(agentNoteRoot, path);
+    const content = readFileSync(path, "utf8");
+    for (const match of content.matchAll(/\[[^\]]+\]\(([^)]+)\)/g)) {
+      const target = match[1].trim().split("#")[0];
+      if (!target || /^(?:[a-z][a-z0-9+.-]*:|\/\/)/i.test(target)) continue;
+      if (resolve(dirname(path), target) === targetPath) { inboundFound.push(note.rel); break; }
     }
   }
+
+  const now = new Date();
+  const pad2 = (n: number) => String(n).padStart(2, "0");
+  const today = `${now.getFullYear()}-${pad2(now.getMonth() + 1)}-${pad2(now.getDate())}`;
+  const newline = source.raw.includes("\r\n") ? "\r\n" : "\n";
+  source.lines[2] = "Status: implemented";
+  source.lines.splice(3, 0, `Archived: ${today}`);
+  const archivedContent = (source.raw.startsWith("\uFEFF") ? "\uFEFF" : "") + source.lines.join(newline);
+  manifest.files[newArchivedRel] = sealOf(archivedContent);
+
+  let successorContent: string | undefined;
+  if (successor && successorPath) {
+    const link = relative(dirname(successorPath), archivedPath).split(sep).join("/");
+    if (!successor.raw.includes(`](${link})`)) {
+      const title = source.lines[0].replace(/^# Agent Note[:：] ?/, "").replace(/[\[\]\\]/g, "\\$&");
+      const eol = successor.raw.includes("\r\n") ? "\r\n" : "\n";
+      successorContent = `${successor.raw.replace(/\s*$/, "")}${eol}${eol}[历史快照：${title}](${link})${eol}`;
+    }
+  }
+
+  // Single-writer operation. Replace manifest/successor through sibling temp
+  // files, remove the source last, and roll back completed writes on I/O errors.
+  const createdDirs: string[] = [];
+  const undo: Array<() => void> = [];
+  try {
+    for (const dir of [join(agentNoteRoot, "archived"), dirname(archivedPath)]) {
+      if (!existsSync(dir)) { mkdirSync(dir); createdDirs.push(dir); }
+    }
+    const fd = openSync(archivedPath, "wx", source.mode);
+    undo.push(() => unlinkSync(archivedPath));
+    try { writeFileSync(fd, archivedContent, "utf8"); } finally { closeSync(fd); }
+    replaceFileAtomically(manifestPath, manifestText(manifest), manifestMode);
+    undo.push(() => {
+      if (originalManifest) replaceFileAtomically(manifestPath, originalManifest, manifestMode);
+      else unlinkSync(manifestPath);
+    });
+    if (successorContent !== undefined && successor && successorPath) {
+      replaceFileAtomically(successorPath, successorContent, successor.mode);
+      undo.push(() => replaceFileAtomically(successorPath, successor.original, successor.mode));
+    }
+    unlinkSync(targetPath);
+  } catch (error) {
+    const rollbackErrors: string[] = [];
+    for (const restore of undo.reverse()) {
+      try { restore(); } catch (rollbackError) { rollbackErrors.push((rollbackError as Error).message); }
+    }
+    for (const dir of createdDirs.reverse()) {
+      try { rmdirSync(dir); } catch (rollbackError) { rollbackErrors.push((rollbackError as Error).message); }
+    }
+    if (rollbackErrors.length) throw new Error(`${(error as Error).message}; rollback could not fully finish: ${rollbackErrors.join("; ")}`);
+    throw error;
+  }
+
+  for (const warning of warnings) console.warn(`warning: ${warning}`);
+  console.log(`Moved: ${source.rel} -> ${newArchivedRel}`);
+  console.log("Sealed in archived/manifest.json");
+  if (successorContent !== undefined) console.log(`Linked historical snapshot from ${successor!.rel}`);
+  if (inboundFound.length) {
+    console.log("Active notes still linking to the former path (review these links):");
+    for (const rel of inboundFound) console.log(`  - ${rel}`);
+  }
 }
 
-if (inboundFound.length > 0) {
-  console.log("\n[Notice] The following active notes link to the archived note:");
-  for (const rel of inboundFound) {
-    console.log(`  - ${rel}`);
-  }
-  console.log("Please review and update their relative markdown links if necessary.");
-} else {
-  console.log("\nNo active notes link to this archived note.");
-}
-
-if (successorPath && successorRel) {
-  const relLink = relative(dirname(successorPath), archivedPath).replace(/\\/g, "/");
-  const newRaw = readFileSync(successorPath, "utf8");
-  if (!newRaw.includes(`archived/${cls}/${filename}`) && !newRaw.includes(relLink)) {
-    writeFileSync(successorPath, `${newRaw.replace(/\s*$/, "")}\n\n[历史快照：${oldTitle}](${relLink})\n`, "utf8");
-    console.log(`Linked from ${successorRel}: [历史快照：${oldTitle}](${relLink})`);
-  }
+try { main(); }
+catch (error) {
+  console.error(`Error: ${(error as Error).message}`);
+  process.exitCode = 1;
 }

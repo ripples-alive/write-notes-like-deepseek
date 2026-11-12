@@ -1,109 +1,76 @@
-# 按需阅读：归档、生命周期治理与冻结机制
+# 归档与历史维护
 
-> 提炼自 [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) 的 notes 治理实践。收尾、复盘或大版本跃迁时对照；日常改动零负担，仅顺手就近替代。
+归档用于保存已经退出当前约束的工程历史。仍会指导维护、避免重犯或限定重新引入条件的理由，应在活跃记录中可检索。
 
-**目录**：§0 执行频次（日常顺手 vs 大扫除）｜§1 过时判定与保留红线（1.1 免检保留 / 1.2 归档标准 / 1.3 垃圾清理 / 1.4 校准示例）｜§2 归档的标准操作流（CLI）｜§3 永久冻结契约
+## 1. 先判断去向
 
----
+| 记录情况 | 去向 |
+|---|---|
+| 决定仍适用，或理由仍影响可预见的工作 | 保持活跃，必要时同步事实 |
+| 只被部分取代 | 保留仍适用的内容，明确范围并链接新决定 |
+| 被完全取代，独有理由仍有用 | 先转入新活跃记录，不能藏进归档 |
+| 有用内容已被完整吸收，旧篇只是重复 | 在授权范围内删除，并修复引用 |
+| 已无现行约束，但仍有独立历史追溯价值 | 可归档 implemented 记录 |
+| 提案停止推进 | 有防重犯价值则 rejected，否则删除；不归档 |
+| rejected 已不再提供独立价值 | 在授权范围内删除，不进入归档 |
 
-## 0. 执行频次：日常顺手 vs 里程碑大扫除
+不按年龄、篇幅或“已经做完”判断。日常只处理当前任务相关记录，不要求固定周期全库清理。
 
-无需每次修改代码都全量扫描，根据场景分级执行：
+## 2. 归档操作
 
-1. **日常提交（90% 场景：零全量心智负担）**：
-   - **就地修改（80%）**：改了某模块，顺手更新持有该决定的现成 Note 事实。
-   - **当场审计（10%）**：新增 Note 时，按模块名/关键词搜活跃笔记，当场分类（无关 / 部分重叠互链 / 完全吸收后删或归档 / 过时提案 reject 或删）。禁止把已知匹配推迟到大扫除。
-2. **里程碑大扫除（10% 场景：按需治理）**：
-   - 仅处理当时搜不到的漏网：季度复盘、大版本发布、或活跃 Note 累积过多影响检索时，集中扫一次。
+先确认仍有用的理由已经保存在活跃位置，修正与本次决定相关的事实，并运行三个 Note 校验器。使用 Node.js 24 或更新版本，从宿主根目录执行；Skill 安装在其他位置时替换前缀。
 
----
-
-## 1. 过时判定与保留红线
-
-判断是否过时**不看字数多少，也不看存续时间长短**，严格依据「未来防撞护栏价值」：
-
-### 1.1 活跃区免检保留红线（即使年代久远也必须保留在 `implemented/`）
-只要符合以下任一特征，绝对不过时，严禁归档：
-- **所有权边界**：明确界定了模块调用权限与架构职责划分（如"UI 层严禁直接直连 DB"）。
-- **否定性保证（Negative Guarantees）**：明确承诺"绝不提供某项能力"或"永不向后兼容某旧协议"。
-- **安全与合规底线**：防止注入、鉴权绕过或数据泄露的刚性约束。
-- **易复踩的被否决方案（Alternatives considered）**：记录了极具诱惑力但在实践中已被证明会导致死锁/崩溃的错误路线。
-
-### 1.2 归档标准（移入 `archived/`）
-仅对 `implemented/` 中满足以下条件的记录执行归档：
-- **被新架构完全取代但仍有独立杠杆**：后续 Note 已吸收核心逻辑，旧篇还留着否定性保证 / 所有权边界 / 重新引入条件——归档，互链写在新笔记。能删则删，见 `references/when-to-write.md` §4。
-- **一次性设计与窄细节**：一次性 UI 边距调整、已废弃平台的狭窄单点适配器、已彻底闭环的简单 bug 修补。
-
-### 1.3 垃圾清理规则（不进归档树）
-- **`proposed/` 绝不归档**：前提消失（如依赖升级自带该能力）或不再推进的提案，直接转为 `Status: rejected — <一句话原因>`；已在其他方案中吸收的直接关闭。
-- **无价值 `rejected/` 物理删除**：若被否决方案所依赖的旧技术/API 已被彻底移除，未来 Agent 绝无可能再提出该错误路线，直接将文件物理删除，不留冗余。
-
-### 1.4 校准示例（立标用；词数证明篇幅不是标准）
-
-移植自 DeepSeek Harness 的归档 skill。判断时对标示例的**理由结构**，别对标词数。
-
-**该归档的 implemented（决定已完成、理由 unlikely 再指导未来工作）：**
-
-- 折叠侧边栏控制栏（~530 词）——已闭环的次要 UI 行为；
-- 某 CLI 参数适配器（~1,500 词）——实现细节很重，但对未来设计几乎没有杠杆；
-- 文档生成管线（~920 词）——机器已完成使命，现行生成器本身就是权威。
-
-**该保留的 implemented（理由仍 owning 或 constraining 什么）：**
-
-- 事件溯源会话存储（~250 词）——基础性权威与持久化边界；
-- 跨产品所有权解析规则（~600 词）——一条所有权边界立法；
-- 项目会话目录策略（~630 词）—— durable 存储与身份策略；
-- 并行 pre-push 门禁（~400 词）——边界案例，但仍指导门禁排程；
-- 已下线的图片内容块（~330 词）——保留，直到多模态落地：它写着协调好的重引入条件。
-
-**rejected 的存与删：**
-
-- 保留「合并压缩包拆分」（~430 词）——合并的诱惑仍在，防重犯价值还在；
-- 删除「经工具调用推送流式进度」（~970 词）——其 ACP/UI 前提已过时；
-- 删除「去掉 ACP 终端元数据」（~360 词）——后来的自动化决策已经回答了这个问题。
-
----
-
-## 2. 归档的标准操作流
-
-推荐直接用 CLI（物理移动 + 封印 + 入站死链报告一次完成，**不依赖 git**）：
-
-```bash
-npx tsx .agents/skills/write-notes-like-deepseek/scripts/archive-agent-note.ts \
-  .agents/notes/implemented/<class>/<filename>.md \
-  [--superseded-by .agents/notes/implemented/<class>/<新笔记>.md]
+```sh
+node .agents/skills/write-notes-like-deepseek/scripts/archive-agent-note.ts \
+  .agents/notes/implemented/<class>/<filename>.md
 ```
 
-CLI 依次完成：
+需要在接管决定的新记录中留下历史链接时，可添加：
 
-1. **写头部标记**：`Archived: YYYY-MM-DD` **紧邻** `Status: implemented` 插入（L3/L4 之间不留空行——这是与 DSH 原版对齐的硬契约，封印校验器逐行核对）：
-   ```markdown
-   # Agent Note: xxx
+```sh
+node .agents/skills/write-notes-like-deepseek/scripts/archive-agent-note.ts \
+  .agents/notes/implemented/<class>/<filename>.md \
+  --superseded-by .agents/notes/implemented/<class>/<successor>.md
+```
 
-   Status: implemented
-   Archived: 2026-08-31
+工具会先检查输入路径、活跃 Note 格式、归档目标、现有 manifest、已有封印和可用的 Git 基线。损坏的 JSON、目标已存在、封印变化或无效基线导致失败，不会用空 manifest 覆盖旧记录。不要绕过错误继续移动文件。
 
-   ## Problem
-   ...
-   ```
-2. **物理移动**：`implemented/<class>/...` → `archived/<class>/...`（git 场景建议用 `git mv` 保留历史，CLI 用文件移动实现，无 git 同样工作）。
-3. **封印入 `archived/manifest.json`**：记录该文件的 SHA-256。封印后任何对归档内容的篡改都会被 `verify-archived` 报警。
-4. **入站死链报告**：扫描活跃笔记里指向该笔记的 Markdown 相对链接（精确链接解析，非文本子串），列出需人工修复的清单。
-5. **可选 `--superseded-by`**：校验新笔记存在，并在**新笔记**末尾补一条指向归档路径的相对链接。不改归档篇。
+校验通过后，工具：
 
-除头部 `Archived:` 一行外，**禁止修改归档正文的任何其他字符**。
+1. 在 `Status: implemented` 下一行加入归档日期，正文作为历史快照保留。
+2. 将文件移到 `archived/<class>/`，为其在 `archived/manifest.json` 中记录 SHA-256。
+3. 使用 `--superseded-by` 时，在指定活跃 Note 中添加指向历史快照的相对链接。
+4. 报告活跃 Notes 中仍指向原路径的相对链接，由维护者修复。
 
-> 历史包袱补齐：若 `archived/` 已有笔记但还没有 manifest（例如从 DSH 导入的语料），运行
-> `npx tsx .agents/skills/write-notes-like-deepseek/scripts/verify-archived-agent-notes.ts --write` 一次性补封印——它会先校验既有封印未被改动，再追加缺失条目，绝不重写历史。
+归档头块为：
 
----
+```markdown
+# Agent Note: <标题>
 
-## 3. 永久冻结契约（Frozen Immutable Contract）
+Status: implemented
+Archived: YYYY-MM-DD
 
-一旦进入 `archived/`：
-- **永久只读**：严禁编辑、翻译、重排版、更新、移动或删除。
-- **机械强制**：`verify-archived` 校验头部布局、manifest 哈希、以及封印的 append-only（有 git 时与基线 ref 对比，`AGENT_NOTE_ARCHIVE_BASE_REF` 可指定基线，默认 HEAD；无 git 自动降级为哈希自校验并提示）。封印只增不改，已封印条目被改动或删除即报错。
-- **免除日常扫描**：`verify-agent-note-tree` 和 `verify-agent-note-format` 默认跳过 `archived/` 目录，归档文件的出站链接失效不会阻塞日常构建。
-- **不可作为当前行为依据**：代码冲突或架构评审时，以 `implemented/` 为准，`archived/` 仅作为历史考据参考；取代关系以新笔记互链和入站改写为准。
+## Problem
+```
 
-上述命令从宿主项目根目录执行；若 Skill 安装在其他位置，请替换 `.agents/skills/write-notes-like-deepseek` 为实际路径。
+`--superseded-by` 的路径必须是同一 Notes 根内另一篇有效活跃记录，不能是归档文件或符号链接。工具校验路径和格式、添加链接，不证明新决定已经落实或完整取代旧决定；实际取代关系仍需审查。
+
+一次只由一名维护者或 Agent 执行归档，不并发修改同一 Notes 树。完成后修复 Notes、代码和文档中受影响的引用，再运行三个校验器。工具报告只覆盖它扫描到的活跃 Note 链接，不替代全仓引用检查。
+
+## 3. 封印与基线
+
+归档文件封印后保持只读：不编辑、翻译、重排、移动或删除。后续修正应写在新的活跃记录中，并按需引用历史。
+
+`verify-archived-agent-notes.ts` 同时检查归档头块、文件与 manifest 的对应关系及 SHA-256。Notes 位于 Git 仓库时，还与 `AGENT_NOTE_ARCHIVE_BASE_REF` 指定的 commit 比较，默认 `HEAD`，防止已有封印条目被改动或删除。CI 应使用变更前的基线，详见 [verification.md](verification.md)。
+
+无 Git 时只能核对本地文件与 manifest 的一致性，会明确提示缺少版本基线；同时修改两者无法由本地哈希证明未改。显式指定基线但无法核对时会失败。
+
+对于已有、尚未封印的有效归档，可显式补录：
+
+```sh
+node .agents/skills/write-notes-like-deepseek/scripts/verify-archived-agent-notes.ts --write
+```
+
+`--write` 先校验已有条目和可用基线，再添加缺失封印；不修复损坏 manifest，不重写旧封印。补录前须确认这些文件确实应当成为历史快照。
+
+目录与格式校验器不扫描归档正文，归档中的历史出站链接可能失效。归档只能作为历史证据，不能覆盖当前代码、现行记录或用户要求。

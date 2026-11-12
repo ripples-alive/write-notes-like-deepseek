@@ -2,10 +2,11 @@
  * Enforce Agent Note headers, lifecycle-specific sections, alternatives.
  * Implemented notes may not carry proposal-era H2s; present tense in the
  * body is a prose rule, not a lexical scan.
- * Run: npx tsx <skill-dir>/scripts/verify-agent-note-format.ts
+ * Run: node <skill-dir>/scripts/verify-agent-note-format.ts
  */
-import { readFileSync } from "node:fs";
+import { readFileSync, realpathSync } from "node:fs";
 import { resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 import { agentNoteRoot, walkAgentNoteTree } from "./agent-note-tree.ts";
 
 const STATUS: Record<string, RegExp> = {
@@ -39,8 +40,6 @@ const BANNED_IMPLEMENTED = new Set([
 ]);
 
 const ALTERNATIVES_RE = /^## (?:Alternatives considered|.{0,8}?(?:替代方案|备选(?:方案)?|其他做法))$/;
-const FORMAT_ADOPTED = "2026-07-05";
-const GRANDFATHER = "<!-- agent-note-format: alternatives-not-recorded (pre-format Agent Note) -->";
 
 /** Strip trailing parenthetical: `## Decision（说明）` → `## Decision`. */
 function headingBase(h: string): string {
@@ -61,23 +60,28 @@ function maskSource(raw: string): MaskedSource {
   const lines = normalized.split("\n");
   const fenced = new Array<boolean>(lines.length).fill(false);
   const commented = new Array<boolean>(lines.length).fill(false);
-  let inFence = false;
+  let fence: { character: string; length: number } | undefined;
   let inComment = false;
   for (let i = 0; i < lines.length; i++) {
     const l = lines[i];
-    fenced[i] = inFence;
+    fenced[i] = fence !== undefined;
     commented[i] = inComment;
-    // A fence opens/closes only on its own line (≤3 leading spaces); fence
-    // mentions inside inline code or prose never toggle state.
-    if (!inComment && /^\s{0,3}```/.test(l)) {
+    const marker = /^ {0,3}(`{3,}|~{3,})(.*)$/.exec(l);
+    // A closing fence must use the opening character, be at least as long,
+    // and contain no information string. Shorter/different fences are samples.
+    if (fence) {
       fenced[i] = true;
-      inFence = !inFence;
-    } else if (inFence) {
+      if (marker && marker[1][0] === fence.character && marker[1].length >= fence.length && /^[ \t]*$/.test(marker[2])) fence = undefined;
+      continue;
+    }
+    // Backtick fence information strings cannot themselves contain backticks.
+    if (!inComment && marker && (marker[1][0] === "~" || !marker[2].includes("`"))) {
+      fence = { character: marker[1][0], length: marker[1].length };
       fenced[i] = true;
+      continue;
     }
     // Fence interiors are opaque: a `<!--` in a HTML/JSX sample must not
     // leak the comment mask past the closing fence.
-    if (inFence) continue;
     const openIdx = inComment ? -1 : l.indexOf("<!--");
     const closeIdx = l.indexOf("-->");
     if (inComment) {
@@ -96,11 +100,11 @@ function isProseLine(src: MaskedSource, i: number): boolean {
   return !/^\s*>/.test(src.lines[i]);
 }
 
-const { notes, errors } = walkAgentNoteTree();
-
-for (const note of notes) {
-  const fail = (msg: string) => { errors.push(`format: ${note.rel} — ${msg}`); };
-  const src = maskSource(readFileSync(resolve(agentNoteRoot, note.rel), "utf8"));
+/** Used by both the verifier and archive preflight so invalid notes cannot be frozen. */
+export function validateNoteFormat(raw: string, lifecycle: string): string[] {
+  const errors: string[] = [];
+  const fail = (msg: string) => { errors.push(msg); };
+  const src = maskSource(raw);
   const { lines } = src;
   const proseIdx: number[] = [];
   for (let i = 0; i < lines.length; i++) if (isProseLine(src, i)) proseIdx.push(i);
@@ -110,8 +114,8 @@ for (const note of notes) {
   if (!/^# Agent Note[:：] ?\S/.test(lines[0] ?? "")) fail("line 1 must be `# Agent Note: <title>`");
   if (lines[1] !== "") fail("line 2 must be blank");
 
-  const re = STATUS[note.lifecycle];
-  if (re && !re.test(lines[2] ?? "")) fail(`line 3 must match ${note.lifecycle} status grammar (${String(re)})`);
+  const re = STATUS[lifecycle];
+  if (re && !re.test(lines[2] ?? "")) fail(`line 3 must match ${lifecycle} status grammar (${String(re)})`);
   if (lines[3] !== "") fail("line 4 must be blank");
 
   // single Status line (fences, quotes and comments immune). Match strict
@@ -130,29 +134,35 @@ for (const note of notes) {
     fail(`first section must be ## Problem or ## 问题 (got ${JSON.stringify(h2s[0] ?? "<none>")})`);
   }
 
-  for (const group of REQUIRED[note.lifecycle] ?? []) {
+  for (const group of REQUIRED[lifecycle] ?? []) {
     if (!group.some((h: string) => bases.includes(h))) fail(`missing one of ${JSON.stringify(group)}`);
   }
 
-  if (note.lifecycle === "implemented") {
+  if (lifecycle === "implemented") {
     for (const h of bases.filter((x: string) => BANNED_IMPLEMENTED.has(x.toLowerCase()))) {
       fail(`banned in implemented: ${h}`);
     }
   }
 
   const hasSection = bases.some((h: string) => ALTERNATIVES_RE.test(h));
-  const rawText = readFileSync(resolve(agentNoteRoot, note.rel), "utf8");
-  const hasGrandfather = rawText.includes(GRANDFATHER);
-  if (hasSection && hasGrandfather) fail("carries both ## Alternatives considered and grandfather comment — drop the comment");
-  if (!hasSection && !hasGrandfather) {
+  // The section is required at every date; it may honestly state that no
+  // alternatives were considered instead of inventing rejected options.
+  if (!hasSection) {
     fail("missing ## Alternatives considered / ## 备选方案");
   }
-  if (hasGrandfather && note.date >= FORMAT_ADOPTED) fail(`grandfather comment only valid before ${FORMAT_ADOPTED}`);
+  return errors;
 }
 
-if (errors.length) {
-  for (const e of errors) console.error(e);
-  process.exit(1);
+function main(): void {
+  const { notes, errors } = walkAgentNoteTree();
+  for (const note of notes) {
+    const raw = readFileSync(resolve(agentNoteRoot, note.rel), "utf8");
+    errors.push(...validateNoteFormat(raw, note.lifecycle).map((error) => `format: ${note.rel} — ${error}`));
+  }
+  if (errors.length) {
+    for (const error of errors) console.error(error);
+    process.exitCode = 1;
+  } else console.log(`ok: ${notes.length} note(s) verified`);
 }
 
-console.log(`ok: ${notes.length} note(s) verified`);
+if (process.argv[1] && realpathSync(resolve(process.argv[1])) === realpathSync(fileURLToPath(import.meta.url))) main();

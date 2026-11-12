@@ -25,7 +25,7 @@ function resolveAgentNoteRoot(): string {
 
 export const agentNoteRoot = resolveAgentNoteRoot()
 
-const AGENT_NOTE_LIFECYCLES = ['proposed', 'implemented', 'rejected'] as const
+export const AGENT_NOTE_LIFECYCLES = ['proposed', 'implemented', 'rejected'] as const
 export const AGENT_NOTE_CLASSES = ['feature', 'bug-fix', 'simplification', 'architecture', 'process', 'testing'] as const
 const AGENT_NOTE_ARCHIVE = 'archived'
 const ROOT_ALLOWLIST = new Set(['AGENTS.md', 'CLAUDE.md'])

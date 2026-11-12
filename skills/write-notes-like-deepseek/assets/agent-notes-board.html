@@ -642,7 +642,7 @@
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
         选择本地 .agents/notes 文件夹
       </button>
-      <button class="action-btn-secondary" id="btn-mount-demo">载入标准样例演示数据</button>
+      <button class="action-btn-secondary" id="btn-mount-demo">载入虚构演示数据</button>
     </div>
   </div>
 
@@ -748,11 +748,7 @@
   </section>
 
   <footer style="margin-top: 24px; padding: 20px 0; border-top: 1px solid var(--border-normal); display: flex; align-items: center; justify-content: space-between; font-family: var(--font-mono); font-size: 11.5px; color: var(--text-tertiary); flex-wrap: wrap; gap: 12px;">
-    <div>Agent Notes · 工程决策看板 · 遵循 MIT 协议开源</div>
-    <div style="display: flex; gap: 16px; align-items: center;">
-      <span>友情链接:</span>
-      <a href="https://linux.do" target="_blank" rel="noopener noreferrer" style="color: var(--brand-blue); text-decoration: none; font-weight: 600;">LinuxDo</a>
-    </div>
+    <div>Agent Notes · 工程决策看板</div>
   </footer>
 
 </main>
@@ -928,7 +924,7 @@ function parseNote(raw, relPath, slugToId = new Map()) {
   if (h1Match) title = h1Match[1].trim();
 
   function extractSection(pattern) {
-    const re = new RegExp(`^## (?:${pattern})\\s*\\n+([\\s\\S]*?)(?=^## |\\s*$)`, 'm');
+    const re = new RegExp(`^## (?:${pattern})\\s*\\n+([\\s\\S]*?)(?=^## |(?![\\s\\S]))`, 'm');
     const m = re.exec(raw);
     return m ? m[1].trim() : '';
   }
@@ -1742,32 +1738,33 @@ async function startMission() {
 }
 
 function loadSampleDataset() {
+  // Entirely synthetic examples; no records are imported from a host project.
   const sample = [
     {
-      id: 'implemented/architecture/2026-06-13-capability-seams.md',
-      slug: '2026-06-13-capability-seams',
+      id: 'implemented/architecture/2000-01-01-example-storage-boundary.md',
+      slug: '2000-01-01-example-storage-boundary',
       lifecycle: 'implemented',
       cls: 'architecture',
-      date: '2026-06-13',
-      title: '能力 Seam：Service Definition / Provider / Consumer 三权分立',
-      problem: '各项能力关注点以不同速率变化。把实现与面向模型的工具契约绑在一起，会导致换沙箱实现时工具 Schema 频发破坏性变更。',
-      decision: '拆分为 Service Definition（Cordis 抽象服务声明）、Service Provider（本地或沙箱实现插件）与 Consumer（面向模型的 Schema 工具），实现三者独立演进。',
-      alternatives: '### 始终合并各角色\n否决，重新耦合了独立变化的关注点。\n### @cordisjs/plugin-capability\n这是权限安全服务，并非实现替换机制。',
-      consequences: '增加包数量与胶水样板；换来沙箱后端替换时彻底零破坏面向模型的工具约定。',
+      date: '2000-01-01',
+      title: '虚构示例：隔离存储接口',
+      problem: '演示场景中，业务逻辑直接依赖文件布局，替换存储实现会牵动多个调用方。',
+      decision: '此虚构决定以一个小接口隔离读写约定，文件实现和内存测试实现在接口之外维护。',
+      alternatives: '### 在每个调用方直接读写文件\n这个虚构方案减少一层接口，但会分散存储格式和错误处理约定。',
+      consequences: '增加接口维护成本；存储替换时可以保留调用约定。实际收益需要在具体项目中验证。',
       outLinks: [],
     },
     {
-      id: 'implemented/architecture/2026-07-20-canonical-tool-output-contract.md',
-      slug: '2026-07-20-canonical-tool-output-contract',
+      id: 'implemented/testing/2000-01-02-example-recovery-check.md',
+      slug: '2000-01-02-example-recovery-check',
       lifecycle: 'implemented',
-      cls: 'architecture',
-      date: '2026-07-20',
-      title: '规范化工具输出契约 (Canonical Output Contract)',
-      problem: '工具直接产出 model-facing 的 ContentBlock 文本，导致编程式工具调用（PTC）无法拿到稳定的强类型领域对象。',
-      decision: '每个工具声明强制的 Canonical Output：执行期输出强类型 DTO，并通过纯函数式 render() 投影成持久化和模型可读文本。',
-      alternatives: '### 双轨制返回值\n否决，维护双重契约增加心智负担。',
-      consequences: '执行期拥有强类型无损数据；PTC 模式无需反向解析字符串。',
-      outLinks: ['implemented/architecture/2026-06-13-capability-seams.md'],
+      cls: 'testing',
+      date: '2000-01-02',
+      title: '虚构示例：验证失败后的恢复',
+      problem: '演示场景中的成功路径测试不能说明写入失败后是否保留旧数据。',
+      decision: '此虚构决定在临时目录中模拟写入失败，检查旧数据仍可读取，且未留下半成品。',
+      alternatives: '### 只检查成功返回值\n这个虚构方案更简单，但没有覆盖恢复条件。',
+      consequences: '测试需要维护故障注入点；它验证可捕获的失败，不代表断电场景已经验证。',
+      outLinks: ['implemented/architecture/2000-01-01-example-storage-boundary.md'],
     }
   ];
   ingestDataset(sample);

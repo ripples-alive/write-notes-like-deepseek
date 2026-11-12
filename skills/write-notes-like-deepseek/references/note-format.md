@@ -1,69 +1,51 @@
-# 按需阅读：Note 文件格式
+# Note 文件格式
 
-> SKILL §2 的展开。写/改 Note 时对照；只改代码不动 Note 时跳过。
+默认使用随附模板。宿主已有记录规范时沿用；以下格式描述本 Skill 校验器支持的布局，不要求迁移其他 ADR 系统。
 
-## 头块（前三行，检查脚本会核对）
+## 头块
 
 ```markdown
 # Agent Note: <标题>
 
 Status: <状态>
-```
 
-- `proposed` → `Status: proposed`
-- `implemented` → `Status: implemented`
-- `rejected` → `Status: rejected — <一句话原因>`
-
-标题前必须带 `Agent Note: ` 前缀；状态不含日期与括号；必须与所在 lifecycle 文件夹一致（脚本会交叉核对）。文件名日期是首次提出日，git 承载其余时间信息。
-
-## Body 骨架
-
-每篇 Note 都以 `## Problem` 开头——动机要能脱离方案独立成立。之后按 lifecycle区分：
-
-**`proposed/`**
-
-```markdown
 ## Problem
-## Proposal
-…自由节…
-## Alternatives considered
-## Acceptance criteria
-## Risks
 ```
 
-`Proposal` 可用将来时；`Acceptance criteria` 说清什么可观察状态算完成；`Risks` 同时写风险与已知取舍。
+第 1 行是标题，第 2、4 行为空行，第 3 行为唯一状态行：
 
-**`implemented/`**
+- `proposed/`：`Status: proposed`
+- `implemented/`：`Status: implemented`
+- `rejected/`：`Status: rejected — <一句话原因>`
 
-```markdown
-## Problem
-## Decision
-…自由节…
-## Alternatives considered
-## Consequences
-```
+文件名采用 `yyyy-mm-dd-topic.md`，日期为首次提出日。状态变化不修改日期；Git 可保留后续修改历史。
 
-`Decision` 用现在时描述已落地事实；门禁只拒提案标题（`## Proposal` / `## Plan` / `## Migration plan` / `## Acceptance criteria` 及其中文别名）；用 `## Consequences` 同时记录代价与收益；可按需加 `## Testing` / `## Verification` 等现在时事实节。现在时靠人写，不靠词法扫描。
+归档保留 `Status: implemented`，在它下一行插入 `Archived: YYYY-MM-DD`，其后空一行。使用归档工具处理，不把状态改为 `archived`。
 
-**`rejected/`**
+## 正文骨架
 
-冻结的 proposal 形态，verdict 在 `Status:` 行；保留提案时的 `Alternatives` 等节，不改写为对立面。
+| 状态 | 必需章节 | 内容 |
+|---|---|---|
+| `proposed` | Problem、Proposal、Alternatives considered、Acceptance criteria、Risks | 问题、拟议选择、真实备选、可观察的完成条件、风险 |
+| `implemented` | Problem、Decision、Alternatives considered、Consequences | 问题、已落实的决定、真实备选、收益与代价 |
+| `rejected` | Problem、Proposal、Alternatives considered | 曾提出的方案与否决理由；可保留 Risks 或其他相关章节 |
 
-## Alternatives considered（必写）
+每篇首个二级章节是 `## Problem`。模板按上述顺序排列，必要的技术说明可放在 `Decision` 或 `Proposal` 后。只增加有独立用途的章节。
 
-每篇 Note 必含 `## Alternatives considered`：每个**真考虑过**的备选为何没选，一段一备选（可用 `### Why not <X>?` 子节）。没有过的选项不要编。「不做 / 复用现状」仅当当时真的权衡过才写。脚本只检查这一节在不在。
+`implemented` 不使用 `## Proposal`、`## Plan`、`## Migration plan`、`## Acceptance criteria` 及对应中文标题。其 `Decision` 说明已落实事实；历史原因和实测记录不必强改成现在时。
 
-## 时态与禁止改写
+## 备选、后果与证据
 
-- `proposed` 可用将来时；`implemented` 一律现在时，描述已落地事实。
-- 一条 Note 永远不被改写成另一个决定；被取代用新 Note 接管，旧 Note 按归档/合并规则处理。
+`## Alternatives considered` 必须存在，但不要求任何最小数量。对真实考虑过的备选说明它的合理性与未选原因；没有真实备选写“无”。整理旧记录时若资料不足，写明“未记录”或具体不确定性，不编造比较过程。尚未决定的提案不要把候选写成已经否决。
 
-头块标题兼容全角冒号（`# Agent Note：标题`，中文输入法常打出全角）；新笔记建议半角。
+`Consequences` 说明已知收益、代价、限制和适用条件。有意义时说明什么变化会促使重访该决定，避免为每篇凑一套假设。
 
-## 自由节与文风
+`Testing` 或 `Verification` 为可选节。写明实际检查的表面、执行结果与未验证部分；仅列命令不代表已执行。性能比较需要基线和测量条件，推测应标明。
 
-- 自由节（package 拓扑、wire 契约、schema 等）放在 `Decision` 与 `Alternatives` 之间。
-- 保留可检索的机制名与 `must`/`may`/`never` 时序强调；一个事实只在一处讲透，其余链过去。
-- 跨 Note 引用用相对 Markdown 链接 `[topic](../../implemented/architecture/2026-…-….md)`，不要裸数字。
+## 语言与链接
 
-格式与别名表对齐 [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) 的 notes 规范；本项目为中文单语，头块 `Agent Note:` 与 `Status:` 保持英文原文以便脚本核对，正文用中文。
+默认中文正文，宿主已有语言约定时沿用；模板头块和节名保留英文。检查器兼容部分中文节名、标题中的全角冒号及括号后缀，支持的具体别名以随附脚本为准。
+
+跨 Note 使用相对 Markdown 链接，并随移动同步。一个事实尽量只在其归属文档中解释；其他位置链接过去。不要用聊天中的序号或无法访问的临时草稿充当依据。
+
+删除模板中的占位文字和指导注释。写入当前工程必要的事实与理由即可，不复制个人账号、外部工作区信息、跨项目规则或同步配置。

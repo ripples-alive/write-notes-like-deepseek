@@ -206,7 +206,7 @@ const notes = walk(notesDir);
 console.log(`✅ 解析完成，共发现 ${notes.length} 篇有效 Agent Notes。`);
 
 if (isMetadataOnly) {
-  console.log('🔒 [安全脱敏] 启用 --metadata-only 模式，已剥离所有笔记的具体正文和详细论证，仅保留决策元数据与关联拓扑。');
+  console.log('启用 --metadata-only：仅省略正文；标题、路径与关联仍保留，分享前自行审查。');
   for (const n of notes) {
     n.problem = '[正文已脱敏]';
     n.decision = '[正文已脱敏]';
@@ -215,7 +215,7 @@ if (isMetadataOnly) {
     n.rawBody = `# Agent Note: ${n.title}\n\nStatus: ${n.status}\n\n<!-- content redacted for public demo -->`;
   }
 } else {
-  console.log('⚠️ [安全提示] 正在生成包含完整正文的数据包。如需对外公开发布且避免泄露内部决策细节，请添加 --metadata-only 参数。');
+  console.log('正在生成包含完整正文的数据包。--metadata-only 仅省略正文；标题、路径与关联仍保留，分享前自行审查。');
 }
 
 let template = readFileSync(templatePath, 'utf8');

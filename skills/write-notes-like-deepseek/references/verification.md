@@ -1,34 +1,58 @@
-# 按需阅读：校验脚本
+# 校验工具与运行方式
 
-> SKILL §6 的展开。接入 CI 时对照；本地轻量使用时跳过。
+所有脚本随 Skill 分发，使用 Node.js 24 或更新版本原生执行 TypeScript，无需 `tsx`。从宿主工程根目录运行，并使用实际安装路径；安装不会自动配置 npm scripts 或启用 CI。
 
-## 检查脚本（均为 tsx，零新增依赖，均可 `npx tsx` 独立运行）
+## 三个校验器
 
-1. **`verify-agent-note-tree`**（`scripts/agent-note-tree.ts` + `scripts/verify-agent-note-tree.ts`）
-   - 校验 lifecycle 封闭集 `proposed/implemented/rejected` + `archived`、class 封闭集 6 个、路径深度 `{lifecycle}/{class}/file.md`、文件名 `yyyy-mm-dd-topic.md`、禁止 `INDEX.md`、活跃笔记内部相对 Markdown 链接有效性。
+| 工具 | 检查范围 |
+|---|---|
+| `verify-agent-note-tree.ts` | 活跃记录的生命周期、六类目录、路径深度、文件名形状、禁止 `INDEX.md`，以及识别到的笔记间相对 Markdown 链接 |
+| `verify-agent-note-format.ts` | 头块、状态与目录一致、必需章节、备选章节存在，以及 implemented 中残留的提案标题 |
+| `verify-archived-agent-notes.ts` | 归档头块、文件与 manifest 的对应关系、SHA-256，以及相对可用 Git 基线的只增不改 |
 
-2. **`verify-agent-note-format`**（`scripts/verify-agent-note-format.ts`）
-   - 头部：第 1 行 `# Agent Note:` 标题（半角/全角冒号都收，中文输入法常打出全角）、第 2/4 行空行、第 3 行 `Status:` 与 lifecycle 一致且全篇唯一。
-   - 骨架：首节必须 `## Problem`/`## 问题`；per-lifecycle 必需节匹配中英别名（`## Decision`/`## 决策`、`## Consequences`/`## 后果` 等；`## Decision（说明）` 这类括号后缀会先剥掉再匹配）；`implemented` 禁用提案式标题（`## Proposal`/`## Plan`/`## Migration plan`/`## Acceptance criteria` 及其中文别名）。现在时是散文纪律，不扫正文。
-   - 备选方案：`## Alternatives considered` / `## 备选方案` / `## 已考虑的替代方案` 等别名必写。脚本不检查「不做/复用」档，也不接受占位注释豁免。
-   - 兼容：CRLF/BOM 自动归一。
+```sh
+node .agents/skills/write-notes-like-deepseek/scripts/verify-agent-note-tree.ts
+node .agents/skills/write-notes-like-deepseek/scripts/verify-agent-note-format.ts
+node .agents/skills/write-notes-like-deepseek/scripts/verify-archived-agent-notes.ts
+```
 
-3. **`verify-archived`**（`scripts/verify-archived-agent-notes.ts`，标配）
-   - 每篇归档：头部布局逐行校验（L3 `Status: implemented` / L4 `Archived: YYYY-MM-DD` 紧邻 / L5 空行）。不承认 `Superseded-by:` 字段。
-   - `archived/manifest.json`：每个文件有封印条目、每条目有对应文件、sha256 与磁盘内容一致（冻结 = 不可篡改的机械含义）。
-   - append-only：有 git 时与基线 ref 的 manifest 逐条对比（env `AGENT_NOTE_ARCHIVE_BASE_REF`，本地默认 HEAD）。CI 必须指向变更前的 commit（本仓库 workflow：PR 用 `pull_request.base.sha`，push 用 `github.event.before`），用 HEAD 等于没查。已封印条目被改/删即报错；**无 git 自动降级**为哈希自校验并打印提示——不用 git 一样能跑，只是少了版本基线对照。
-   - `--write`：先证明既有封印未变，再为未封印文件追加封印（历史语料补齐用这个）。
+项目级、全局或其他目录安装时，替换命令前缀。默认 Notes 根为当前目录下 `.agents/notes/`；可用 `AGENT_NOTE_ROOT` 指定其他符合布局的根目录。
 
-4. **`check-note-anchors`**（`scripts/check-note-anchors.ts`，软报告，退出码恒 0，**不进 CI**）
-   - 扫描源码（env `AGENT_NOTE_CODE_ROOT` 指定根，默认 cwd；自动跳过 node_modules/.git/dist 等）里的 `// Note:` / `# Note:` 物理锚点：报告悬空锚点、没有锚点指向的 implemented 笔记、缺路径的锚点行。宿主没用锚点就不必跑。
+三个检查器全部运行。新工程没有 Notes 或归档时可以为空；这不是要求建立空目录。已有归档是否被移除，还需要检查 Git 基线，不能因当前目录消失就跳过。
 
-## 接入建议
+## 格式检查的边界
 
-- 轻量（个人/无 git）：前两个脚本即可，归档封印在第一次归档后自然生效。
-- 完整（团队）：`npm run verify-notes` 三线串进 CI，失败即红（本 Skill 的 `templates/verify-notes.yml` 可作模板，复制到宿主根目录 `.github/workflows/` 并核对脚本路径后启用）。
+- 模板固定英文头块与节名；脚本也识别部分中文别名、标题全角冒号及章节括号后缀。
+- 代码块、引用和 HTML 注释中的示例不充当正文结构；CRLF 和 BOM 在格式解析时归一。
+- 所有活跃 Note 都需要备选章节，不按创建日期豁免。章节可以诚实写“无”或“未记录”，脚本不检查数量和真实性。
+- `implemented` 的当前状态描述由作者负责；检查器仅拒绝提案类标题，不扫描正文时态。
+- 结构通过不能证明理由正确、内容完整、工程测试已执行，也不能发现应该创建却没有创建的 Note。真实工程验证仍按宿主要求完成。
 
-三个校验脚本方法上来自 [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness)，按通用中文单语宿主裁过：无双语三件套、无 DSH 迁仓豁免。锚点体检是可选软报告，不是 DSH 门禁。
+## Git 基线与 CI
 
-## 脚本路径
+`AGENT_NOTE_ARCHIVE_BASE_REF` 应指向变更前的有效 commit：PR 使用目标分支的基线，已有分支 push 使用事件的前一个 commit。本地默认 `HEAD`，可检查尚未提交的变更；CI 用当前变更的 `HEAD` 无法约束同一提交中对旧封印的重写。
 
-本文的 `scripts/` 相对于 Skill 安装目录。运行命令时保持当前目录为宿主项目根目录，并使用实际 Skill 路径调用脚本；安装本身不会创建宿主 npm scripts。
+校验器在 Notes 所在位置查找 Git 仓库，不把另一个当前目录的仓库当作它的历史：
+
+- 基线 commit 有效，但当时尚无 manifest：允许初始化。
+- 空 Git 仓库还没有 commit：默认 `HEAD` 可初始化；显式无效 ref 仍失败。
+- Git 仓库中的基线无法解析或读取：失败，不当作“历史为空”。浅克隆应取回所需基线。
+- Notes 不在 Git 仓库：仅核对本地文件与 manifest，并提示缺少历史比较；若显式要求基线则失败。
+
+新分支首次 push 的事件基线可能是全零值。CI 需要明确区分这种初始化事件，不能把全零值传给校验器或默默把所有无效 ref 当作初始化。随附模板在此事件中使用当前仓库 `origin` 默认分支的共同祖先，按宿主历史和发布要求核对基线选择。
+
+需要接入时，将 `templates/verify-notes.yml` 复制到宿主 `.github/workflows/verify-notes.yml`，核对 Skill 安装路径。模板留在 Skill 目录里不会运行。宿主已配置同名 npm scripts 时，可使用 `npm run verify-notes` 串行运行三个校验器。
+
+## 归档与可选工具
+
+归档前后运行三个校验器；归档命令、补录封印及只读规则见 [archiving.md](archiving.md)。
+
+`check-note-anchors.ts` 是可选软报告，扫描代码中的 `// Note:` 或 `# Note:` 路径锚点，报告缺路径、无效锚点和未被锚点引用的 implemented 记录。默认代码根为当前目录，可通过 `AGENT_NOTE_CODE_ROOT` 指定。退出码不表示这些报告已解决，不作为 CI 必需项。
+
+```sh
+node .agents/skills/write-notes-like-deepseek/scripts/check-note-anchors.ts
+node .agents/skills/write-notes-like-deepseek/scripts/build-board.ts --init board.html '工程决定'
+node .agents/skills/write-notes-like-deepseek/scripts/build-board.ts --bundle .agents/notes demo.html '工程决定'
+```
+
+看板为可选查看方式；打包文件包含所选笔记正文。只按当前任务授权保存或发布，不自动对外上传，也不把宿主记录打包进公共 Skill 仓库。

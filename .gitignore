@@ -1,10 +1,7 @@
 node_modules/
 .DS_Store
-docs/
-# 本 skill 的 self-dogfood 笔记不随包发布
-.agents/notes/
-# 7.8MB 脱机内联数据产物不纳入版本库
-demo.html
+# 本地生成的内联看板可能包含宿主项目笔记，不随工具仓库发布。
+/demo.html
 
 # 本地生成的轻量看板
 /board.html
